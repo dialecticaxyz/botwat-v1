@@ -5,6 +5,7 @@ session_auth_info/
 # Dependency directories
 node_modules/
 jspm_packages/
+baileys.txt
 # dotenv environment variables file
 .env
 .env.test
