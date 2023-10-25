@@ -1,23 +1,21 @@
 const { default: makeWASocket,DisconnectReason,useMultiFileAuthState } = require("@whiskeysockets/baileys");
 const { Boom } = require("@hapi/boom");
 const log = (pino = require("pino"));
-const express = require("express");
-const cors = require("cors");
-const app = require("express")();
 const qrcode = require("qrcode");
-const server = require("http").createServer(app);
 const fsExtra = require('fs-extra')
+const cors = require("cors");
+const express = require("express");
+const app = express();
+const wsServer = require('express-ws')(app); 
+const { handleWs,brocastBoot } = require("./utilidades/websocket.js")
 
-const { session } = { session: "session_auth_info" };
-const port = process.env.PORT || 8000;
+app.set('port', process.env.PORT || 80);
 
 app.use(cors());
 app.use(express.json());
+app.ws('/',handleWs);
 
-app.get("/scan", (req, res) => {
-  res.sendFile("./client/index.html", {root: __dirname});
-});
-app.get("/", (req, res) => { res.send("server working") });
+app.get("/scan",(req, res)=>{ res.sendFile("./index.html",{root:__dirname}) });
 
 let sock;
 let qrDinamic;
@@ -27,11 +25,13 @@ async function connectToWhatsApp() {
   sock = makeWASocket( {printQRInTerminal:true,auth:state,logger:log({level:"silent"})} );
   sock.ev.on("connection.update", async (update)=>{
     const { connection, lastDisconnect, qr } = update;
-    qrDinamic = qr;
+    qrDinamic = qr; console.log(qr!=undefined+"qr");
+    if(qr!=undefined){qrcode.toDataURL(qr,(err,url)=>{ brocastBoot({"rut":"sendQr","dat":url}) })}
+
     if(connection==="close"){
       let reason = new Boom(lastDisconnect.error).output.statusCode;
       if(reason === DisconnectReason.badSession){
-        console.log(`Bad Session File, Please Delete ${session} and Scan Again`);
+        console.log(`Bad Session File, Please Delete  and Scan Again`);
       }
       if(reason === DisconnectReason.connectionClosed){
         console.log("Conexión cerrada, reconectando....");
@@ -44,8 +44,11 @@ async function connectToWhatsApp() {
         console.log("Conexión reemplazada, otra nueva sesión abierta, cierre la sesión actual primero");
       }
       if(reason === DisconnectReason.loggedOut){
-        console.log(`Dispositivo cerrado, elimínelo ${session} y escanear de nuevo.`);
-        fsExtra.remove('session_auth_info').then(()=>{ connectToWhatsApp(); }).catch(err=>{ console.error(err) })
+        console.log(`Dispositivo cerrado, elimínelo  y escanear de nuevo.`);
+        fsExtra.emptyDir('session_auth_info').then(()=>{ 
+          brocastBoot({"rut":"closeSession","dat":""}) 
+          connectToWhatsApp();
+        }).catch(err=>{ console.error(err) })
       }
       if(reason === DisconnectReason.restartRequired){
         console.log("Se requiere reinicio, reiniciando...");
@@ -56,7 +59,11 @@ async function connectToWhatsApp() {
         connectToWhatsApp();
       }
     }
-    if(connection==="open"){ console.log("conexión abierta"); return; }
+    if(connection==="open"){ 
+      console.log("conexión abierta boot"); 
+      brocastBoot({"rut":"openSession","dat":""})
+      return; 
+    }
   });
   sock.ev.on("creds.update", saveCreds);
 }
@@ -81,18 +88,21 @@ app.post("/send-message", async (req,res) => {
     }
   }catch(err){ res.status(500).send(err) }
 });
-
-app.get("/scan-qr", async (req,res) => {
-  if(isConnected()){ 
-    res.status(200).send({"qr":false}) 
-  }else if(qrDinamic){ 
-    qrcode.toDataURL(qrDinamic, (err,url)=>{ 
-      res.status(200).send({"qr":url}) 
-    })
+app.post("/scan-qr", async (req,res) => {
+  if(isConnected()){ res.status(200).send({"qr":"connected"}); return }
+  if(qrDinamic){ 
+    qrcode.toDataURL(qrDinamic, (err,url)=>{ res.status(200).send({"qr":url}) })
+  }else{
+    res.status(200).send({"qr":"noQr"});
   }
 });
+app.post("/activeBoot", async (req,res) => {
+  fsExtra.emptyDir('session_auth_info').then(()=>{ 
+    connectToWhatsApp().catch((err) => console.log("unexpected error: " + err)); // catch any errors
+    res.status(200).send({msg:"success"})
+  }).catch(err=>{ console.error(err) })
+});
 
-connectToWhatsApp().catch((err) => console.log("unexpected error: " + err)); // catch any errors
-server.listen(port, () => {
-  console.log("Server Run Port : " + port);
+const server = app.listen(app.get('port'),()=>{ 
+  console.log("http://127.0.0.1:"+server.address().port) 
 });

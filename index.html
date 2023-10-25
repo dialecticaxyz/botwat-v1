@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<title>wa api test demo</title>
+<meta name="description" content="WhatsApp Api otomatis.">
+<meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+</head>
+<body>
+    
+<img src=""  id="qrcode" style="width: 250px;">
+
+<input type="text" id="tex">
+<button onclick="senMensage()" id="send" >send</button>
+<script>
+		
+const qrcode=document.getElementById("qrcode");
+
+let urlQr = "https://botwat-v1.glitch.me/scan-qr"
+fetch(urlQr).then(rsp=>{ if(rsp.ok){ rsp.json().then(d=>{ 
+  console.log(d) 
+  qrcode.setAttribute("src",d.qr)
+})}});
+
+let url = "http://botwat-v1.glitch.me/send-message"
+function sendMsg(dat){
+  return new Promise(function(resolve,reject){
+    fetch(url,{method:'post',headers:{'Accept':'application/json,text/plain','Content-Type':'application/json'},body:JSON.stringify(dat)}).then(rsp=>{ if(rsp.ok){ rsp.json().then(d=>{ resolve(d) })}});
+  })
+}
+
+async function senMensage(){
+  let dat = {"message":document.getElementById("tex").value,"number":"76538333"}
+  let rs = await sendMsg(dat)
+  console.log(rs)
+}
+
+</script>
+</body>
+</html>

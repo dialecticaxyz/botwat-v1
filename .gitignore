@@ -1,5 +1,7 @@
 # data base  nedb
 data/
+client/
+session_auth_info/
 # Dependency directories
 node_modules/
 jspm_packages/
